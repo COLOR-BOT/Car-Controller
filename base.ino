@@ -33,30 +33,28 @@ int PWMpin[4] = {5, 6, 10, 3};    // PWM input
 #define actuatorUp 30
 #define actuatorDown 31
 
-// Battery Monitoring
-#define led 14
-int sensorValue = analogRead(A0);
+// Ultrasonic Sensors
+/*
+ * 0 Facing Wall (LEFT)
+ * 1 - Front
+ * 2 - Back
+ */
+const int pingPin0 = 47, pingPin1 = 43, pingPin2 = 45;  // Trigger Pin of Ultrasonic Sensor
+const int echoPin0 = 46, echoPin1 = 42, echoPin2 = 44;  // Echo Pin of Ultrasonic Sensor
 
 void setup() {
   Serial.begin(9600);        // Default baud rate of Serial Terminal (for debugging purposes) 
-  while (!Serial) {
-    Serial.print("Serial NOT initialized\n");
-  }                         // wait for serial port to connect. Needed for native USB port only
+  while (!Serial) Serial.print("Serial NOT initialized\n");     // wait for serial port to connect. Needed for native USB port only
   Serial.print("Serial initialized\n");
 
   Bluetooth1.begin(9600);    // Default baud rate of Bluetooth module
-  while (!Bluetooth1) {
-    Serial.print("BT 1 NOT initialized\n");
-  }
+  while (!Bluetooth1) Serial.print("BT 1 NOT initialized\n");   // wait for serial port to connect.
   Serial.print("Bluetooth 1 initialized\n");
   
   Bluetooth2.begin(9600);    // Default baud rate of Bluetooth module
-  while (!Bluetooth2) {
-    Serial.print("BT 2 NOT initialized\n");
-  }
+  while (!Bluetooth2) Serial.print("BT 2 NOT initialized\n");   // wait for serial port to connect.
   Serial.print("Bluetooth 2 initialized\n");
     
-  pinMode(led, OUTPUT);
   pinMode(actuatorUp, OUTPUT);
   pinMode(actuatorDown, OUTPUT);
 
@@ -70,23 +68,24 @@ void setup() {
     digitalWrite(inBpin[i], LOW);
     
   }
-
+  
   Bluetooth1.listen();
-
   Serial.print("Set-Up completed\n\n");  
-
 }
 
 int lbw[50], lfw[50], rbw[50], rfw[50]; // Stepper Motors - STORED Positions / Steps
 int wheelSpeed = PWM_MAX, dataIn, m, dataOut, index = 0;
-String color = "";
+String color = "", state = "";
+long duration0, inches0, cm0,
+     duration1, inches1, cm1,
+     duration2, inches2, cm2;
 
 void loop() {  
   dataIn = Bluetooth1.read();         // Read data coming from Bluetooth
-  
+   
   // Check for incoming data 
   if (dataIn == 0) {
-    Serial.print("0 - STOP Moving\n");      
+    Serial.print("0 - STOP Moving\n");
     stopMoving();
   }
   else if (dataIn == 1) {
@@ -191,19 +190,12 @@ void loop() {
     color = "black";
   }
   
-  else if (dataIn > 25) {
+  if (dataIn > 25) {
     wheelSpeed = dataIn;
     Serial.println ("Wheel Speed: ");
     Serial.println(wheelSpeed);
     Serial.print("\n");
   } 
-
-  // Monitor the battery voltage
-  float voltage = sensorValue * (5.0 / 1023.00) * 3; // Convert the reading values from 5v to suitable 12V i
-  
-  //  Serial.println(voltage);
-  if (voltage < 11) digitalWrite(led, HIGH); // If voltage is below 11V turn on the LED
-  else digitalWrite(led, LOW);
 
   if (color == "cyan" & dataOut != 1 & dataOut != 0) {
     Serial.println ("Old Data Out: ");
@@ -258,21 +250,68 @@ void loop() {
     Bluetooth2.write(dataOut);
     Bluetooth1.listen();
   }
+
+  // Ultrasonic Sensor 0 (Facing Wall)
+  pinMode(pingPin0, OUTPUT);
+  digitalWrite(pingPin0, LOW);
+  
+  delayMicroseconds(2);
+  digitalWrite(pingPin0, HIGH);
+  
+  delayMicroseconds(10);
+  digitalWrite(pingPin0, LOW);
+  pinMode(echoPin0, INPUT);
+
+  duration0 = pulseIn(echoPin0, HIGH);
+  inches0 = microsecondsToInches(duration0);
+  cm0 = microsecondsToCentimeters(duration0);
+
+  // Ultrasonic Sensor 1 (FRONT)
+  pinMode(pingPin1, OUTPUT);
+  digitalWrite(pingPin1, LOW);
+  
+  delayMicroseconds(2);
+  digitalWrite(pingPin1, HIGH);
+  
+  delayMicroseconds(10);
+  digitalWrite(pingPin1, LOW);
+  pinMode(echoPin1, INPUT);
+
+  duration1 = pulseIn(echoPin1, HIGH);
+  inches1 = microsecondsToInches(duration1);
+  cm1 = microsecondsToCentimeters(duration1);
+
+  // Ultrasonic Sensor 2 (BACK)
+  pinMode(pingPin2, OUTPUT);
+  digitalWrite(pingPin2, LOW);
+  
+  delayMicroseconds(2);
+  digitalWrite(pingPin2, HIGH);
+  
+  delayMicroseconds(10);
+  digitalWrite(pingPin2, LOW);
+  pinMode(echoPin2, INPUT);
+
+  duration2 = pulseIn(echoPin2, HIGH);
+  inches2 = microsecondsToInches(duration2);
+  cm2 = microsecondsToCentimeters(duration2);
+
+  if(inches0 < 12 || inches1 < 12 || inches2 < 12) stopMoving();
 }
 
 
 void moveForward() {
-  motorGo(0, CW, wheelSpeed);      // 0 - Right Front Wheel
-  motorGo(1, CCW, wheelSpeed);     // 1 - Left Front Wheel
-  motorGo(2, CW, wheelSpeed);      // 2 - Right Back Wheel
-  motorGo(3, CCW, wheelSpeed);     // 3 - Left Back Wheel
+  motorGo(0, CCW, wheelSpeed);      // 0 - Right Front Wheel
+  motorGo(1, CW, wheelSpeed);       // 1 - Left Front Wheel
+  motorGo(2, CCW, wheelSpeed);      // 2 - Right Back Wheel
+  motorGo(3, CW, wheelSpeed);       // 3 - Left Back Wheel
 }
 
 void moveBackward() {
-  motorGo(0, CCW, wheelSpeed);     // 0 - Right Front Wheel
-  motorGo(1, CW, wheelSpeed);      // 1 - Left Front Wheel
-  motorGo(2, CCW, wheelSpeed);     // 2 - Right Back Wheel
-  motorGo(3, CW, wheelSpeed);      // 3 - Left Back Wheel
+  motorGo(0, CW, wheelSpeed);       // 0 - Right Front Wheel
+  motorGo(1, CCW, wheelSpeed);      // 1 - Left Front Wheel
+  motorGo(2, CW, wheelSpeed);       // 2 - Right Back Wheel
+  motorGo(3, CCW, wheelSpeed);      // 3 - Left Back Wheel
 }
 
 void moveSidewaysRight() {
@@ -304,41 +343,53 @@ void rotateLeft() {
 }
 
 void moveRightForward() {
-   motorGo(0, CW, wheelSpeed);    // 0 - Right Front Wheel
-   stopOneMotor(1);               // 1 - Left Front Wheel
-   motorGo(2, CW, wheelSpeed);    // 2 - Right Back Wheel
+   stopOneMotor(0);               // 0 - Right Front Wheel
+   motorGo(1, CW, wheelSpeed);    // 1 - Left Front Wheel
+   motorGo(2, CCW, wheelSpeed);   // 2 - Right Back Wheel
    stopOneMotor(3);               // 3 - Left Back Wheel
 }
 
 void moveRightBackward() {
-   stopOneMotor(0);               // 0 - Right Front Wheel
-   motorGo(1, CW, wheelSpeed);    // 1 - Left Front Wheel
+   motorGo(0, CW, wheelSpeed);    // 0 - Right Front Wheel
+   stopOneMotor(1);               // 1 - Left Front Wheel
+   stopOneMotor(2);               // 2 - Right Back Wheel
+   motorGo(3, CCW, wheelSpeed);   // 3 - Left Back Wheel
+}
+
+void moveLeftForward() {
+   motorGo(0, CCW, wheelSpeed);   // 0 - Right Front Wheel
+   stopOneMotor(1);               // 1 - Left Front Wheel
    stopOneMotor(2);               // 2 - Right Back Wheel
    motorGo(3, CW, wheelSpeed);    // 3 - Left Back Wheel
 }
 
-void moveLeftForward() {
-   stopOneMotor(0);              // 0 - Right Front Wheel
-   motorGo(1, CCW, wheelSpeed);  // 1 - Left Front Wheel
-   stopOneMotor(2);              // 2 - Right Back Wheel
-   motorGo(3, CCW, wheelSpeed);  // 3 - Left Back Wheel 
-}
-
 void moveLeftBackward() {
-   motorGo(0, CCW, wheelSpeed);  // 0 - Right Front Wheel
-   stopOneMotor(1);              // 1 - Left Front Wheel
-   motorGo(2, CCW, wheelSpeed);  // 2 - Right Back Wheel
-   stopOneMotor(3);              // 3 - Left Back Wheel
+   stopOneMotor(0);               // 0 - Right Front Wheel
+   motorGo(1, CCW, wheelSpeed);   // 1 - Left Front Wheel
+   motorGo(2, CW, wheelSpeed);    // 2 - Right Back Wheel
+   stopOneMotor(3);               // 3 - Left Back Wheel
 }
 
 void stopMoving() {
   // Initialize braked
 
+  Serial.print("inches0: ");
+  Serial.print(inches0);
+  Serial.print("\n");
+  
+  Serial.print("inches1: ");
+  Serial.print(inches1);
+  Serial.print("\n");
+  
+  Serial.print("inches2: ");
+  Serial.print(inches2);
+  Serial.print("\n");  
+  
   Serial.print("data in: ");
   Serial.print(dataIn);
   Serial.print("\n");
   
-  dataOut = dataIn;
+  dataOut = 0;
   Bluetooth2.write(dataOut);
   Bluetooth1.listen();
   Serial.print("data out: ");
@@ -419,7 +470,7 @@ void paintLeftUp() {
   Bluetooth1.listen();
     
   goUp();
-  moveSidewaysLeft();
+  moveBackward();
 }
 
 void paintUp() {
@@ -454,11 +505,11 @@ void paintRightUp() {
   Bluetooth1.listen();
     
   goUp();
-  moveSidewaysRight(); 
+  moveForward(); 
 }
 
 void paintLeft() {
-    Serial.print("color: " + color);
+  Serial.print("color: " + color);
   if (color == "cyan") dataOut = 1;
   else if (color == "magenta") dataOut = 2;
   else if (color == "yellow") dataOut = 3;
@@ -466,10 +517,11 @@ void paintLeft() {
   Serial.print(" | dataOut: ");
   Serial.print(dataOut);
   Serial.print("\n");
- 
+
+  Bluetooth2.write(index);
   Bluetooth2.write(dataOut);
   Bluetooth1.listen();
-    
+
   moveBackward();
 }
 
@@ -505,7 +557,7 @@ void paintLeftDown() {
   Bluetooth1.listen();
     
   goDown();
-  moveSidewaysLeft();
+  moveBackward();
 }
 
 void paintDown() {
@@ -541,5 +593,13 @@ void paintRightDown() {
   Bluetooth1.listen();
   
   goDown();
-  moveSidewaysRight();
+  moveForward();
+}
+
+long microsecondsToInches(long microseconds) {
+   return microseconds / 74 / 2;
+}
+
+long microsecondsToCentimeters(long microseconds) {
+   return microseconds / 29 / 2;
 }
